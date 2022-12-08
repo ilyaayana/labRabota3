@@ -11,18 +11,94 @@ using namespace cv;
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
-    , ui(new Ui::MainWindow)
+    , ui(new Ui::MainWindow),info1(this),info2(this),actions(this),ColorMode(COLOR),task(EQUALIZE_CONTRAST)
 {
     ui->setupUi(this);
+    actions.addAction(ui->a_hist_and_contrast);
+    actions.addAction(ui->a_hist_HSV_RGB);
+    actions.addAction(ui->a_add);
+    actions.addAction(ui->a_multiply);
+    actions.addAction(ui->a_power);
+    actions.addAction(ui->a_logariphmic);
+    actions.addAction(ui->a_negative);
+    for(auto action:actions.actions())
+        action->setCheckable(true);
+    ui->a_hist_and_contrast->setChecked(true);
 
-     filename = QFileDialog::getOpenFileName(this).toStdString();
-     image = imread(filename);
+    actions.setEnabled(false);
 
-    setUpImagesAndHistograms();
+    info1.setWindowTitle("Процесс");
+    info2.setWindowTitle("Процесс");
 
-    ui->scrollArea->resize(width(),height()*0.9);
+    modifiedImage1 = Mat(30,30,CV_16SC3);
+    modifiedImage2 = Mat(30,30,CV_16SC3);
+
+    ui->scrollArea->setVisible(false);
+    chooseFilesText = new QLabel("Вы не выбрали файл. Для выбора файла выберите Файл->Открыть",this);
+    chooseFilesText->show();
 
 }
+
+void MainWindow::resizeEvent(QResizeEvent *event){
+    chooseFilesText->setGeometry(width()*0.18,height()*0.2,700,300);
+    ui->scrollArea->resize(width(),height()*0.9);
+}
+
+void MainWindow::setUpInterface(){
+
+    actions.setEnabled(true);
+    chooseFilesText->hide();
+    ui->scrollArea->setVisible(true);
+    if((task == EQUALIZE_CONTRAST) || (task == EQUALIZE_RGB_HSV)){
+        ui->w_original->setVisible(true);
+        ui->w_modified1->setVisible(true);
+        ui->horizontalWidget->setVisible(false);
+        ui->verticalLayout_9->addWidget(ui->lb_hist3);
+        size = 400;
+    }
+    else{
+        ui->w_original->setVisible(false);
+        ui->w_modified1->setVisible(false);
+        ui->horizontalWidget->setVisible(true);
+        ui->horizontalLayout_4->addWidget(ui->lb_hist3);        
+        ui->pushButton_3->setText("Сменить цветовой режим");
+        size = 600;
+    }
+    switch(task){
+        case EQUALIZE_CONTRAST:
+            ui->lb_header->setText("Эквализация гистограммы и Линейное контрастирование");
+            ui->pushButton_3->setText("Линейное контрастирование");
+            break;
+        case EQUALIZE_RGB_HSV:
+            ui->lb_header->setText("Эквализация гистограммы");
+            ui->pushButton_3->setText("Эквализация гистограммы(RGB)");
+            break;
+        case ADD:
+            ui->lb_header->setText("Добавление значения");
+            ui->horizontalSlider->setMaximum(100);
+            ui->doubleSpinBox->setMaximum(100);
+            break;
+        case MULTIPLY:
+            ui->lb_header->setText("Умножение на значение");
+            ui->horizontalSlider->setMaximum(30);
+            ui->doubleSpinBox->setMaximum(3);
+            break;
+        case POWER:
+            ui->lb_header->setText("Возведение в степень");
+            ui->horizontalSlider->setMaximum(30);
+            ui->doubleSpinBox->setMaximum(3);
+            break;
+        case LOGARIPHMIC:
+            ui->lb_header->setText("Логарифмическое преобразование");
+            ui->horizontalWidget->setVisible(false);
+            break;
+        case NEGATIVE:
+            ui->lb_header->setText("Негатив");
+            ui->horizontalWidget->setVisible(false);
+            break;
+    }
+}
+
 Mat MainWindow::equalImageHist(Mat image){
     Mat hist_equalized_image;
 
@@ -37,6 +113,11 @@ Mat MainWindow::equalImageHist(Mat image){
 
     cvtColor(hist_equalized_image, hist_equalized_image, COLOR_YCrCb2BGR);
 
+    info1.setText("1.Конвертация изображения из пространства BGR(используемый openCV по умолчанию) в пространство YCrCb\n"
+                  "2.Разделение изображения на составляющие с целью извлечения компонента яркости\n"
+                  "3.Эквализация гистограммы компонента яркости\n"
+                  "4.Объединение полученного изображения и конвертация в пространство BGR");
+
     return hist_equalized_image;
 }
 Mat MainWindow::equalImageHistRGB(Mat image){
@@ -47,7 +128,8 @@ Mat MainWindow::equalImageHistRGB(Mat image){
     vector<Mat> vec_channels;
     split(modified_image, vec_channels);
 
-    equalizeHist(vec_channels[0], vec_channels[0]);
+    for(int i = 0; i<3;i++)
+       equalizeHist(vec_channels[i], vec_channels[i]);
 
     merge(vec_channels, modified_image);
 
@@ -86,6 +168,29 @@ Mat MainWindow::buildHistogram(Mat src){
     }
     return histImage;
 }
+Mat MainWindow::buildHistogramGray(Mat src){
+
+    Mat image;
+    src.copyTo(image);
+    int histSize = 256;
+    float range[] = { 0, 256 };
+    const float* histRange[] = { range };
+    bool uniform = true, accumulate = false;
+    Mat hist;
+    calcHist( &image, 1, 0, Mat(), hist, 1, &histSize, histRange, uniform, accumulate );
+    int hist_w = 512, hist_h = 400;
+    int bin_w = cvRound( (double) hist_w/histSize );
+    Mat histImage( hist_h, hist_w, CV_8UC3, Scalar( 0,0,0) );
+    normalize(hist, hist, 0, histImage.rows, NORM_MINMAX, -1, Mat() );
+    for( int i = 1; i < histSize; i++ )
+    {
+        line( histImage, Point( bin_w*(i-1), hist_h - cvRound(hist.at<float>(i-1)) ),
+              Point( bin_w*(i), hist_h - cvRound(hist.at<float>(i)) ),
+              Scalar( 255, 255, 255), 2, 8, 0  );
+    }
+    return histImage;
+}
+
 
 Mat MainWindow::linearContrast(Mat image){
 
@@ -111,12 +216,18 @@ Mat MainWindow::linearContrast(Mat image){
 
     cvtColor(modified_image, modified_image, COLOR_YCrCb2BGR);
 
+    info2.setText("1.Конвертация изображения из пространства BGR(используемый openCV по умолчанию) в пространство YCrCb\n"
+                  "2.Разделение изображения на составляющие с целью извлечения компонента яркости\n"
+                  "3.Вычисление реального диапазона яркостей исходного изображения:fmin = " + QString::number(min) + ",f max = "+ QString::number(max) +"\n"
+                  "4.Применение к каждому элементу изображения преобразования по формуле:(f(m,n)-fmin)*255/(fmax-fmin)\n"
+                  "5.Объединение полученного изображения и конвертация в пространство BGR");
     return modified_image;
 }
+
 Mat MainWindow::add(int value){
 
     Mat modified_image;
-    image.copyTo(modified_image);
+    originalImage.copyTo(modified_image);
 
     cvtColor(modified_image, modified_image, COLOR_BGR2YCrCb);
 
@@ -140,7 +251,7 @@ Mat MainWindow::add(int value){
 Mat MainWindow::mul(double value){
 
     Mat modified_image;
-    image.copyTo(modified_image);
+    originalImage.copyTo(modified_image);
 
     cvtColor(modified_image, modified_image, COLOR_BGR2YCrCb);
 
@@ -164,18 +275,21 @@ Mat MainWindow::mul(double value){
 Mat MainWindow::exponentiation(double value){
 
     Mat modified_image;
-    image.copyTo(modified_image);
+    originalImage.copyTo(modified_image);
 
     cvtColor(modified_image, modified_image, COLOR_BGR2YCrCb);
 
     vector<Mat> vec_channels;
     split(modified_image, vec_channels);
 
+    double min,max;
+    minMaxLoc(modified_image,&min,&max);
+
         for(int j=0;j<vec_channels[0].rows;j++)
         {
               for (int i=0;i<vec_channels[0].cols;i++)
               {
-                  vec_channels[0].at<uchar>(j,i) = 255*qPow(vec_channels[0].at<uchar>(j,i)/255.0,value);
+                  vec_channels[0].at<uchar>(j,i) = 255*qPow(vec_channels[0].at<uchar>(j,i)/max,value);
               }
         }
     merge(vec_channels, modified_image);
@@ -187,7 +301,7 @@ Mat MainWindow::exponentiation(double value){
 
 Mat MainWindow::negative(){
     Mat modified_image;
-    image.copyTo(modified_image);
+    originalImage.copyTo(modified_image);
 
     cvtColor(modified_image, modified_image, COLOR_BGR2YCrCb);
 
@@ -210,7 +324,7 @@ Mat MainWindow::negative(){
 Mat MainWindow::logariphmic(){
 
     Mat modified_image;
-    image.copyTo(modified_image);
+    originalImage.copyTo(modified_image);
 
     cvtColor(modified_image, modified_image, COLOR_BGR2YCrCb);
 
@@ -234,104 +348,219 @@ Mat MainWindow::logariphmic(){
     return modified_image;
 }
 
-void MainWindow::resizeEvent(QResizeEvent *event){
-    ui->scrollArea->resize(width(),height()*0.9);
-}
-
 MainWindow::~MainWindow()
 {
     delete ui;
 }
 
 
-void MainWindow::on_horizontalSlider_sliderMoved(int position)
+void MainWindow::modifyImage(double value)
 {
-    Mat image_add = add(position);
-    Mat image_add_hist = buildHistogram(image_add);
-    imwrite("modified_images\\image_add.jpg",image_add);
-    imwrite("modified_images\\image_add_hist.jpg",image_add_hist);
-    ui->label_23->setPixmap(QPixmap("modified_images\\image_add.jpg").scaled(200,200));
-    ui->label_24->setPixmap(QPixmap("modified_images\\image_add_hist.jpg").scaled(200,200));
-}
+    switch(task){
+        case ADD:
+            modifiedImage2 = add(value);
+            break;
+        case MULTIPLY:
+            value/=10;
+            modifiedImage2 = mul(value);
+            break;
+        case POWER:
+            value/=10;
+            modifiedImage2 = exponentiation(value);
+            break;
+        case LOGARIPHMIC:
+            modifiedImage2 = logariphmic();
+            break;
+        case NEGATIVE:
+            modifiedImage2 = negative();
+            break;
+        default:
+            return;
+    }
 
+    Mat histModifiedImage2;
+    if(ColorMode == COLOR)
+        histModifiedImage2 = buildHistogram(modifiedImage2);
+    else
+    {
+        cvtColor(modifiedImage2, modifiedImage2, COLOR_BGR2GRAY);
+        histModifiedImage2 = buildHistogramGray(modifiedImage2);
+    }
 
-void MainWindow::on_horizontalSlider_2_sliderMoved(int position)
-{
-    Mat image_mul = mul(position/100.0);
-    Mat image_mul_hist = buildHistogram(image_mul);
-    imwrite("modified_images\\image_mul.jpg",image_mul);
-    imwrite("modified_images\\image_mul_hist.jpg",image_mul_hist);
-    ui->label_29->setPixmap(QPixmap("modified_images\\image_mul.jpg").scaled(200,200));
-    ui->label_28->setPixmap(QPixmap("modified_images\\image_mul_hist.jpg").scaled(200,200));
-}
-
-
-void MainWindow::on_horizontalSlider_3_sliderMoved(int position)
-{
-    Mat image_exp = exponentiation(position/100.0);
-    Mat image_exp_hist = buildHistogram(image_exp);
-    imwrite("modified_images\\image_exp.jpg",image_exp);
-    imwrite("modified_images\\image_exp_hist.jpg",image_exp_hist);
-    ui->label_32->setPixmap(QPixmap("modified_images\\image_exp.jpg").scaled(200,200));
-    ui->label_31->setPixmap(QPixmap("modified_images\\image_exp_hist.jpg").scaled(200,200));
+    imwrite("modified_images\\modifiedImage2.jpg",modifiedImage2);
+    imwrite("modified_images\\histModifiedImage2.jpg",histModifiedImage2);
+    ui->lb_Image3->setPixmap(QPixmap("modified_images\\modifiedImage2.jpg").scaled(size,size,Qt::KeepAspectRatio));
+    ui->lb_hist3->setPixmap(QPixmap("modified_images\\histModifiedImage2.jpg").scaled(size,size,Qt::KeepAspectRatio));
 }
 
 
 void MainWindow::on_a_open_triggered()
 {
     filename = QFileDialog::getOpenFileName(this).toStdString();
-    image = imread(filename);
+    if(filename.empty())
+        return;
+    setUpInterface();
     setUpImagesAndHistograms();
+    modifyImage();
 }
 
 void MainWindow::setUpImagesAndHistograms(){
-    Mat linImage = linearContrast(image);
-    Mat linImageHistogram = buildHistogram(linImage);
-    imwrite("modified_images\\linImage.jpg",linImage);
-    imwrite("modified_images\\linImageHistogram.jpg",linImageHistogram);
 
-    Mat hist_equalized_image = equalImageHist(image);
-    Mat hist_equalizedRGB_image = equalImageHistRGB(image);
 
-    Mat histImage = buildHistogram(image);
-    Mat histImage2 = buildHistogram(hist_equalized_image);
-    Mat histImage3 = buildHistogram(hist_equalizedRGB_image);
+    originalImage = imread(filename);
 
-    Mat negative_image = negative();
-    Mat negative_image_hist = buildHistogram(hist_equalizedRGB_image);
+    switch(task)
+    {
+        case EQUALIZE_CONTRAST:
+            modifiedImage1 = equalImageHist(originalImage);
+            modifiedImage2 = linearContrast(originalImage);
+            break;
+        case EQUALIZE_RGB_HSV:
+            modifiedImage1 = equalImageHist(originalImage);
+            modifiedImage2 = equalImageHistRGB(originalImage);
+            break;
+        default:
+            return;
+    }
 
-    Mat logariphmic_image = logariphmic();
-    Mat logariphmic_image_hist = buildHistogram(logariphmic_image);
 
-    on_horizontalSlider_2_sliderMoved(100);
-    on_horizontalSlider_3_sliderMoved(100);
+    Mat histOriginalImage, histModifiedImage1, histModifiedImage2;
+    if(ColorMode == GRAY)
+    {
+         cvtColor(originalImage, originalImage, COLOR_BGR2GRAY);
+         cvtColor(modifiedImage1, modifiedImage1, COLOR_BGR2GRAY);
+         cvtColor(modifiedImage2, modifiedImage2, COLOR_BGR2GRAY);
+         histOriginalImage = buildHistogramGray(originalImage);
+         histModifiedImage1 = buildHistogramGray(modifiedImage1);
+         histModifiedImage2 = buildHistogramGray(modifiedImage2);
+    }
+    else
+    {
+         histOriginalImage = buildHistogram(originalImage);
+         histModifiedImage1 = buildHistogram(modifiedImage1);
+         histModifiedImage2 = buildHistogram(modifiedImage2);
+    }
 
-        imwrite("modified_images\\hist_equalized_image.jpg",hist_equalized_image);
-        imwrite("modified_images\\orig_hist.jpg",histImage);
-        imwrite("modified_images\\final_hist.jpg",histImage2);
-        imwrite("modified_images\\hist_equalizedRGB_image.jpg",hist_equalizedRGB_image);
-        imwrite("modified_images\\histImage3.jpg",histImage3);
-        imwrite("modified_images\\logariphmic_image.jpg",logariphmic_image);
-        imwrite("modified_images\\logariphmic_image_hist.jpg",logariphmic_image_hist);
-        imwrite("modified_images\\negative_image.jpg",negative_image);
-        imwrite("modified_images\\negative_image_hist.jpg",negative_image_hist);
-        ui->label_2->setPixmap(QPixmap(QString::fromStdString(filename)).scaled(200,200));
-        ui->label_11->setPixmap(QPixmap(QString::fromStdString(filename)).scaled(200,200));
-        ui->label_23->setPixmap(QPixmap(QString::fromStdString(filename)).scaled(200,200));
-        ui->label_3->setPixmap(QPixmap("modified_images\\hist_equalized_image.jpg").scaled(200,200));
-        ui->label_4->setPixmap(QPixmap("modified_images\\orig_hist.jpg.").scaled(200,200));
-        ui->label_13->setPixmap(QPixmap("modified_images\\orig_hist.jpg.").scaled(200,200));
-        ui->label_24->setPixmap(QPixmap("modified_images\\orig_hist.jpg.").scaled(200,200));
-        ui->label_5->setPixmap(QPixmap("modified_images\\final_hist.jpg.").scaled(200,200));
-        ui->label_10->setPixmap(QPixmap("modified_images\\linImage.jpg").scaled(200,200));
-        ui->label_12->setPixmap(QPixmap("modified_images\\linImageHistogram.jpg").scaled(200,200));
-        ui->label_16->setPixmap(QPixmap("modified_images\\hist_equalizedRGB_image.jpg").scaled(200,200));
-        ui->label_17->setPixmap(QPixmap("modified_images\\histImage3.jpg").scaled(200,200));
-        ui->label_19->setPixmap(QPixmap("modified_images\\hist_equalized_image.jpg").scaled(200,200));
-        ui->label_20->setPixmap(QPixmap("modified_images\\final_hist.jpg").scaled(200,200));
-        ui->label_26->setPixmap(QPixmap("modified_images\\negative_image.jpg").scaled(200,200));
-        ui->label_25->setPixmap(QPixmap("modified_images\\negative_image_hist.jpg").scaled(200,200));
-        ui->label_34->setPixmap(QPixmap("modified_images\\logariphmic_image.jpg").scaled(200,200));
-        ui->label_35->setPixmap(QPixmap("modified_images\\logariphmic_image_hist.jpg").scaled(200,200));
+    imwrite("modified_images\\orig_image.jpg",originalImage);
+    imwrite("modified_images\\modifiedImage1.jpg",modifiedImage1);
+    imwrite("modified_images\\modifiedImage2.jpg",modifiedImage2);
+    imwrite("modified_images\\histOriginalImage.jpg",histOriginalImage);
+    imwrite("modified_images\\histModifiedImage1.jpg",histModifiedImage1);
+    imwrite("modified_images\\histModifiedImage2.jpg",histModifiedImage2);
+
+
+    ui->lb_Image1->setPixmap(QPixmap("modified_images\\orig_image.jpg").scaled(size,size,Qt::KeepAspectRatio));
+    ui->lb_Image2->setPixmap(QPixmap("modified_images\\modifiedImage1.jpg").scaled(size,size,Qt::KeepAspectRatio));
+    ui->lb_Image3->setPixmap(QPixmap("modified_images\\modifiedImage2.jpg").scaled(size,size,Qt::KeepAspectRatio));
+    ui->lb_hist1->setPixmap(QPixmap("modified_images\\histOriginalImage.jpg").scaled(size,size,Qt::KeepAspectRatio));
+    ui->lb_hist2->setPixmap(QPixmap("modified_images\\histModifiedImage1.jpg").scaled(size,size,Qt::KeepAspectRatio));
+    ui->lb_hist3->setPixmap(QPixmap("modified_images\\histModifiedImage2.jpg").scaled(size,size,Qt::KeepAspectRatio));
+}
+
+
+void MainWindow::on_pushButton_clicked()
+{
+    info1.exec();
+}
+
+
+void MainWindow::on_pushButton_3_clicked()
+{
+    if((task == EQUALIZE_CONTRAST) || (task == EQUALIZE_RGB_HSV))
+        info2.exec();
+    else{
+       ColorMode = ColorMode == COLOR ? GRAY: COLOR;
+       modifyImage(ui->horizontalSlider->value());
+    }
+}
+
+
+void MainWindow::on_pb_original_clicked()
+{
+    ColorMode = ColorMode == COLOR ? GRAY: COLOR;
+    setUpImagesAndHistograms();
+}
+
+
+void MainWindow::on_horizontalSlider_sliderMoved(int position)
+{
+    if(task == ADD)
+        ui->doubleSpinBox->setValue(position);
+    else
+        ui->doubleSpinBox->setValue(position/10.0);
+     modifyImage(position);
+}
+
+void MainWindow::on_doubleSpinBox_editingFinished()
+{
+    if(task == ADD)
+        ui->horizontalSlider->setValue(ui->doubleSpinBox->value());
+    else
+        ui->horizontalSlider->setValue(ui->doubleSpinBox->value()*10);
+    modifyImage(ui->horizontalSlider->value());
+}
+
+void MainWindow::on_a_hist_and_contrast_triggered()
+{
+    ColorMode = COLOR;
+    task = EQUALIZE_CONTRAST;
+    setUpInterface();
+    setUpImagesAndHistograms();
+}
+void MainWindow::on_a_hist_HSV_RGB_triggered()
+{
+    ColorMode = COLOR;
+    task = EQUALIZE_RGB_HSV;
+    setUpInterface();
+    setUpImagesAndHistograms();
+}
+
+
+void MainWindow::on_a_add_triggered()
+{
+    ColorMode = COLOR;
+    task = ADD;
+    setUpInterface();
+    setUpImagesAndHistograms();
+}
+
+
+void MainWindow::on_a_multiply_triggered()
+{
+    ColorMode =COLOR;
+    task = MULTIPLY;
+    setUpInterface();
+    setUpImagesAndHistograms();
+    modifyImage();
+}
+
+
+void MainWindow::on_a_power_triggered()
+{
+    ColorMode = COLOR;
+    task = POWER;
+    setUpInterface();
+    setUpImagesAndHistograms();
+    modifyImage();
+}
+
+
+void MainWindow::on_a_logariphmic_triggered()
+{
+    ColorMode =COLOR;
+    task = LOGARIPHMIC;
+    setUpInterface();
+    setUpImagesAndHistograms();
+    modifyImage();
+}
+
+
+void MainWindow::on_a_negative_triggered()
+{
+    ColorMode = COLOR;
+    task = NEGATIVE;
+    setUpInterface();
+    setUpImagesAndHistograms();
+    modifyImage();
 }
 

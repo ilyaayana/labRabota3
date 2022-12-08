@@ -23,9 +23,14 @@ qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
 
+win32:RC_ICONS += icon.ico
 win32:CONFIG(release, debug|release): LIBS += -L$$PWD/../../../../opencv/opencv/build/x64/vc15/lib/ -lopencv_world460
 else:win32:CONFIG(debug, debug|release): LIBS += -L$$PWD/../../../../opencv/opencv/build/x64/vc15/lib/ -lopencv_world460d
 else:unix: LIBS += -L$$PWD/../../../../opencv/opencv/build/x64/vc15/lib/ -lopencv_world460
 
 INCLUDEPATH += $$PWD/../../../../opencv/opencv/build/include
 DEPENDPATH += $$PWD/../../../../opencv/opencv/build/include
+
+DISTFILES +=
+
+RESOURCES +=
