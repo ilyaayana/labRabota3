@@ -523,8 +523,6 @@ void MainWindow::on_a_add_triggered()
     setUpInterface();
     setUpImagesAndHistograms();
 }
-
-
 void MainWindow::on_a_multiply_triggered()
 {
     ColorMode =COLOR;
@@ -533,8 +531,6 @@ void MainWindow::on_a_multiply_triggered()
     setUpImagesAndHistograms();
     modifyImage();
 }
-
-
 void MainWindow::on_a_power_triggered()
 {
     ColorMode = COLOR;
