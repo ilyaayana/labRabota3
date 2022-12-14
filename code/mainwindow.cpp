@@ -353,7 +353,6 @@ MainWindow::~MainWindow()
     delete ui;
 }
 
-
 void MainWindow::modifyImage(double value)
 {
     switch(task){
